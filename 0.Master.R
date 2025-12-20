@@ -1,0 +1,2 @@
+# Carregando pacotes
+library(ipeadatar)
