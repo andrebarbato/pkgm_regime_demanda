@@ -12,3 +12,5 @@ library(fable)
 library(feasts)
 
 source("3.Helper_Functions.R")
+
+load(file = "data/pkgm_data.rda")
