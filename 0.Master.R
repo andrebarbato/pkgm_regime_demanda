@@ -8,9 +8,10 @@ library(vars)
 library(urca)
 library(forecast)
 library(lmtest)
-library(fable)
-library(feasts)
+#library(fable)
+#library(feasts)
 
 source("3.Helper_Functions.R")
 
 load(file = "data/pkgm_data.rda")
+load(file = "data/pkgm_data_treated.rda")

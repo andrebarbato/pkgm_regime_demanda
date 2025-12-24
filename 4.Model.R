@@ -24,8 +24,8 @@ interp_urdf(out_g_d$drift_adf, level = "5pct")
 interp_urdf(out_g_d$none_adf, level = "5pct")
 
 # Testando a robustez
-urca::ur.kpss(g, type = "tau", lags = "short") |> summary()
-fable::as_tsibble(pkgm_data, index = year) |>
+urca::ur.kpss(pkmg_data_treated[,1], type = "mu", lags = "short") |> summary()
+fable::as_tsibble(pkmg_data_treated, index = year) |>
   dplyr::filter(year %in% c(1970:2019)) |> 
   features(gdp_rg, unitroot_kpss)
 
@@ -37,9 +37,9 @@ plot(out_g_d$none_adf)
 
 # Teste ADF de Raíz Unitária da Utilização da Capacidade------------------------
 
-# tx. cresc. PIB em níve
+# utilização da capacidade em nível
 u <- ts(pkgm_data$uci, start = 1970, end = 2019, frequency = 1)
-# tx. cresc. PIB em primeira diferença
+# utilização da capacidade em primeira diferença
 u_d <- diff(u)
 
 # teste de raíz unitária
@@ -62,7 +62,7 @@ interp_urdf(out_u_d$none_adf, level = "5pct")
 # Testando a robustez
 urca::ur.kpss(u, type = "tau", lags = "short") |> summary()
 fable::as_tsibble(pkgm_data, index = year) |>
-  dplyr::filter(year %in% c(1970:2008)) |> 
+  #dplyr::filter(year %in% c(1970:2008)) |> 
   features(uci, unitroot_kpss)
 
 fable::as_tsibble(pkgm_data, index = year) |>
@@ -98,205 +98,155 @@ interp_urdf(out_p_d$none_adf, level = "5pct")
 # Testando a robustez
 urca::ur.kpss(p, type = "tau", lags = "short") |> summary()
 fable::as_tsibble(pkgm_data, index = year) |>
-  dplyr::filter(year %in% c(1970:2008)) |> 
+  #dplyr::filter(year %in% c(1970:2008)) |> 
   features(profitsh, unitroot_kpss)
+
+fable::as_tsibble(pkgm_data, index = year) |>
+  dplyr::filter(year %in% c(1970:2019)) |> 
+  features(profitsh, unitroot_ndiffs)
+
+plot(out_p_d$none_adf)
+
+# Teste ADF de Raíz Unitária da wage share ----------------------------------
+
+# wage share em nível
+w <- ts(pkgm_data$wagesh, start = 1970, end = 2019, frequency = 1)
+# wage share em nível em primeira diferença
+w_d <- diff(w)
+
+# teste de raíz unitária
+out_w <- summary_urdf(w, "w")
+out_w_d <- summary_urdf(w_d, "diff(w)")
+
+# juntando os resultados de u e diff(u)
+dplyr::bind_rows(out_w$sum_adf, 
+                 out_w_d$sum_adf) |>
+  stargazer::stargazer(summary = FALSE, type = "text") # mudar para latex 
+
+interp_urdf(out_w$trend_adf, level = "5pct")
+interp_urdf(out_w$drift_adf, level = "5pct")
+interp_urdf(out_w$none_adf, level = "5pct")
+
+interp_urdf(out_w_d$trend_adf, level = "5pct")
+interp_urdf(out_w_d$drift_adf, level = "5pct")
+interp_urdf(out_w_d$none_adf, level = "5pct")
+
+# Testando a robustez
+urca::ur.kpss(w, type = "tau", lags = "short") |> summary()
+fable::as_tsibble(pkgm_data, index = year) |>
+  #dplyr::filter(year %in% c(1970:2008)) |> 
+  features(wagesh, unitroot_kpss)
 
 fable::as_tsibble(pkgm_data, index = year) |>
   dplyr::filter(year %in% c(1970:2019)) |> 
   features(wagesh, unitroot_ndiffs)
 
-plot(out_p_d$none_adf)
+plot(out_w_d$none_adf)
 
-# VAR Model ------------------------------------------------------------
-var_df <- pkgm_data |> 
-  dplyr::filter(year %in% c(1970:2008)) |> 
-  dplyr::mutate(dp = profitsh - lag(profitsh)) |> 
-  dplyr::select(!c(year,wagesh,dp)) |> tidyr::drop_na()
+# Teste de Cointegração de Johansen ------------------------------------
 
-w <- ts(pkgm_data$wagesh, start = 1970, end = 2019, frequency = 1)
-w_d <- diff(w)
-var_df <- cbind(g_d, u_d, w_d)
-colnames(var_df) <- c("dg", "du", "dw")
-plot.ts(var_df)
+var_df_nivel <- pkmg_data_treated[,c(1:3)]
+colnames(var_df_nivel) <- c("g", "u", "p")
+plot.ts(var_df_nivel)
 
-# pré-seleção do modelo
-acf(var_df,24)
+order_selection <- vars::VARselect(var_df_nivel,lag.max = 4, type = "both")
 
-vars::VARselect(var_df,lag.max = 5, type = "none")
+stargazer::stargazer(order_selection$selection, summary = FALSE, type = "text")
 
-H1.eigen <- urca::ca.jo(var_df, 
+stargazer::stargazer(t(order_selection$criteria), summary = FALSE, type = "text")
+
+var_base <- vars::VAR(var_df_nivel, p=1, type="both")
+plot.ts(residuals(var_base))
+acf(residuals(var_base),36)
+summary(var_base)
+roots(var_base)
+
+# Verificação Resíduos por Ljung-Box:
+serial.test(var_base, lags.pt = 12)
+
+# Verificação da Normalidade dos Resíduos por Jarque-Bera:
+
+normality.test(var_base)
+
+# Verificação da Homocedasticidade dos Resíduos:
+
+arch.test(var_base, lags.multi = 6)
+
+# Teste de Estabilidade Paramétrica das Eq. do VAR:
+
+plot(stability(var_base), nc=1)
+
+# Teste de Cointegração de Johansen
+
+H1.eigen <- urca::ca.jo(var_df_nivel, 
                         type="eigen", 
-                        ecdet="const", 
-                        K= 2, 
+                        ecdet="trend", 
+                        K= 3, 
                         spec="longrun", 
                         season = NULL)
 summary(H1.eigen)
 
-H1.trace <- urca::ca.jo(var_df, 
+H1.trace <- urca::ca.jo(var_df_nivel, 
                         type="trace", 
-                        ecdet="const", 
-                        K= 2, 
+                        ecdet="trend", 
+                        K= 3, 
                         spec="longrun", 
                         season = NULL)
 summary(H1.trace)
 
-modelo_var <- vars::vec2var(H1.eigen, r = 2)
+matjo <-  H1.eigen@cval
+matjo <- cbind(matjo, H1.eigen@teststat)
+colnames(matjo) <- c("10pct", "5pct", "1pct", "t statistic")
 
-vars::serial.test(modelo_var)
+stargazer::stargazer(matjo, summary = FALSE, type = "latex")
 
-vars::normality.test(modelo_var)
+# VAR Model ------------------------------------------------------------
 
-vars::arch.test(modelo_var)
+# pré-seleção do modelo
+acf(var_df_nivel,24)
 
-impulso_resposta <- vars::irf(
-  x = modelo_var,
-  impulse = "dw",
-  response = "du",
-  n.ahead = 24,
-  runs = 1000,
-  seed = 42
-)
-plot(impulso_resposta)
+vars::VARselect(var_df_nivel,lag.max = 4, type = "both")
 
-impulso_resposta2 <- vars::irf(
-  x = modelo_var,
-  impulse = "dw",
-  response = "dg",
-  n.ahead = 24,
-  runs = 1000,
-  seed = 42
-)
-plot(impulso_resposta2)
+# Modelo VAR p 1
 
-impulso_resposta3 <- vars::irf(
-  x = modelo_var,
-  impulse = "du",
-  response = "dg",
-  n.ahead = 24,
-  runs = 1000,
-  seed = 42
-)
+var_model <- vars::VAR(var_df_nivel, 
+                       p=1, 
+                       type="both", 
+                       season = NULL, 
+                       exogen = NULL)
 
-plot(impulso_resposta3)
+var_base <- vars::VAR(var_df_nivel, p=1, type="both")
+plot.ts(residuals(var_model))
+acf(residuals(var_model),36)
+summary(var_model)
+roots(var_model)
 
-summary(modelo_var)
+# Verificação Resíduos por Ljung-Box:
+serial.test(var_model)
 
-VECM.vars <- urca::cajorls(H1.eigen, r=1)
-VECM.vars
-summary(VECM.vars$rlm)
+# Verificação da Normalidade dos Resíduos por Jarque-Bera:
 
-impulso_resposta3 <- vars::irf(
-  x = VECM.vars$rlm,
-  impulse = "p",
-  response = "g",
-  n.ahead = 8,
-  runs = 1000,
-  seed = 42
-)
+normality.test(var_model)
 
-var_est_p1 <- vars::VAR(var_df, p = 1, type = "const", season = NULL, exogen = NULL)
-var_est_p4 <- vars::VAR(var_df, p = 4, season = NULL, exogen = NULL)
-var_est_p7 <- vars::VAR(var_df, p = 7, season = NULL, exogen = NULL)
-var_est_p8 <- vars::VAR(var_df, p = 8, season = NULL, exogen = NULL)
-var_est_p9 <- vars::VAR(var_df, p = 9, season = NULL, exogen = NULL)
-var_est_p10 <- vars::VAR(var_df, p = 10, season = NULL, exogen = NULL)
-var_est_p12 <- vars::VAR(var_df, p = 12, season = NULL, exogen = NULL)
-var_est_p9s <- vars::VAR(var_df, p = 10, season = 12, exogen = NULL)
+# Verificação da Homocedasticidade dos Resíduos:
 
-acf(residuals(var_est_p1),24)
-summary(var_est_p1)
+arch.test(var_model, lags.multi = 6)
 
-vars::Acoef(var_est_p1)                                # Gera as Matrizes Pi parâmetro auto e inte-regressivos.
-vars::roots(var_est_p1, modulus = TRUE)                # Autovalores da Matriz Associada 
+# Teste de Estabilidade Paramétrica das Eq. do VAR:
 
-## Testes de Auocorrelação: Portmanteau e FAC´s
-# Portmanteau: H0: Erros Não serialmente correlacionados até o lag #
+plot(stability(var_model), nc=1)
 
-ACF <- vars::serial.test(var_est_p1, lags.pt= 24, type = "PT.asymptotic")
-ACF
+# Rodar a simulação de monte carlo
+resultados_mc_95 <- boot_girf_var(var_model, n.ahead = 8, runs = 10000)
 
-plot(ACF, names="g")
-plot(ACF, names="u")
-plot(ACF, names="dp")
+# 3. Exportar todos os gráficos para um PDF organizado
+save_all_girfs(resultados_mc_95, folder_name = "GIRF_output", output_type = "pdf")
 
-## Teste de Normalidade dos Resíduos:
-# H0: Erros Normalmente distribuídos
+painel_geral_95 <- plot_girf_panel(resultados_mc_95)
 
-vars::normality.test(var_est_p1, multivariate.only = TRUE)
+# Rodar a simulação de monte carlo
+resultados_mc_80 <- boot_girf_var(var_model, n.ahead = 8, runs = 10000, conf = 0.80)
 
-## Previsão com modelo VAR
+painel_geral_80 <- plot_girf_panel(resultados_mc_95, conf = 0.80)
 
-plot(predict(var_est_p1, n.ahead = 10, ci = 0.95, dumvar = NULL))
-
-## Teste de Causalidade de Granger:
-
-vars::causality(var_est_p1, cause= "g")
-vars::causality(var_est_p1, cause= "u")
-vars::causality(var_est_p1, cause= "p")
-
-## Estimação do SVAR Modelo Tipo A:
-
-N.Restrictions <- function(K){
-  R <- K*(K-1)/2
-  return(R)}
-
-N.Restrictions(3)
-
-## SVAR: Ver Apresentação sobre aula prácita SVAR
-
-# Restrições do Tipo A:
-# Hipóteses:
-# (i)    PIB não reage contemporaneamente à inflação e à tx. juros (PIB só reage defasadamente à essas variáveis)
-# (ii)   Inflação reage contemporaneamente ao PIB e não reage contemporaneamente à tx. juros.
-# (iii)  tx. juros reage contemporaneamente ao PIB e à inflação (BC Monitora ativamente DA e Preços)
-
-# Geraçãoda Matriz A de Efeitos Feed-Back: Modelo tipo A
-
-Amat <- diag(3)
-colnames(Amat) <- rownames(Amat) <- c("g", "u", "p")
-Amat[2,1] <-NA 
-Amat[3,1] <-NA 
-Amat[3,2] <-NA 
-Amat
-
-SVAR.A <- vars::SVAR(var_est_p1, Amat=Amat, Bmat=NULL, hessian=TRUE, estmethod ="direct")
-SVAR.A
-
-# Estimação das Funções Impulso-Resposta com base no SVAR:
-
-irfA.1 <- vars::irf(SVAR.A, n.ahead= 8,  impulse = "p", response = c("u"), runs = 1000, seed = 1)
-plot(irfA.1)
-
-irfA.2<- vars::irf(SVAR.A, n.ahead=8, impulse = "p", response = "g", runs = 1000, seed = 1)     
-plot(irfA.2)
-
-irfA.3 <- vars::irf(SVAR.A, n.ahead=8, impulse = "u", response = "g", runs = 1000, seed = 1)     
-plot(irfA.3)
-
-# Restrições do Tipo B:
-# Hipóteses:
-
-# (i)    O PIB e a inflação não são afetados instantaneamente por choques monetários
-# (ii)   O Banco Central reage contemporaneamente a choques de PIB e inflação.
-
-# Geração da Matriz B:
-
-Bmat <- matrix(NA, 3, 3)
-colnames(Bmat) <- rownames(Bmat) <- c("g", "u", "p")
-
-Bmat[1,3] <- 0  # choque monetário não afeta PIB contemporaneamente
-Bmat[1,2] <- 0  # choque Inflação não afeta PIB contemporaneamente
-Bmat[2,3] <- 0  # choque monetário não afeta inflação contemporaneamente
-Bmat
-
-SVAR.B <- vars::SVAR(var_est_p1, Amat=NULL, Bmat=Bmat, hessian=TRUE, estmethod ="direct")
-SVAR.B
-
-irfB.1 <- vars::irf(SVAR.B, n.ahead=20,  impulse = "p", response = c("u"))
-plot(irfB.1)
-
-irfB.2<- vars::irf(SVAR.B, n.ahead=20, impulse = "p", response = "g")     
-plot(irfB.2)
-
-irfB.3 <- vars::irf(SVAR.B, n.ahead=20, impulse = "u", response = "g")     
-plot(irfB.3)
+print(painel_geral_80)
