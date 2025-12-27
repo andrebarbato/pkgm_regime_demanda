@@ -149,39 +149,20 @@ var_df_nivel <- pkmg_data_treated[,c(1:3)]
 colnames(var_df_nivel) <- c("g", "u", "p")
 plot.ts(var_df_nivel)
 
-order_selection <- vars::VARselect(var_df_nivel,lag.max = 4, type = "both")
+order_selection <- vars::VARselect(var_df_nivel,lag.max = 5, type = "both")
 
 stargazer::stargazer(order_selection$selection, summary = FALSE, type = "text")
 
 stargazer::stargazer(t(order_selection$criteria), summary = FALSE, type = "text")
 
-var_base <- vars::VAR(var_df_nivel, p=1, type="both")
-plot.ts(residuals(var_base))
-acf(residuals(var_base),36)
-summary(var_base)
-roots(var_base)
-
-# Verificação Resíduos por Ljung-Box:
-serial.test(var_base, lags.pt = 12)
-
-# Verificação da Normalidade dos Resíduos por Jarque-Bera:
-
-normality.test(var_base)
-
-# Verificação da Homocedasticidade dos Resíduos:
-
-arch.test(var_base, lags.multi = 6)
-
-# Teste de Estabilidade Paramétrica das Eq. do VAR:
-
-plot(stability(var_base), nc=1)
+lags_ci <- order_selection$selection |> min()
 
 # Teste de Cointegração de Johansen
 
 H1.eigen <- urca::ca.jo(var_df_nivel, 
                         type="eigen", 
                         ecdet="trend", 
-                        K= 3, 
+                        K= ifelse(lags_ci<2, 2, lags_ci), 
                         spec="longrun", 
                         season = NULL)
 summary(H1.eigen)
@@ -189,7 +170,7 @@ summary(H1.eigen)
 H1.trace <- urca::ca.jo(var_df_nivel, 
                         type="trace", 
                         ecdet="trend", 
-                        K= 3, 
+                        K= ifelse(lags_ci<2, 2, lags_ci), 
                         spec="longrun", 
                         season = NULL)
 summary(H1.trace)
@@ -198,7 +179,7 @@ matjo <-  H1.eigen@cval
 matjo <- cbind(matjo, H1.eigen@teststat)
 colnames(matjo) <- c("10pct", "5pct", "1pct", "t statistic")
 
-stargazer::stargazer(matjo, summary = FALSE, type = "latex")
+stargazer::stargazer(matjo, summary = FALSE, type = "text")
 
 # VAR Model ------------------------------------------------------------
 
@@ -209,44 +190,43 @@ vars::VARselect(var_df_nivel,lag.max = 4, type = "both")
 
 # Modelo VAR p 1
 
-var_model <- vars::VAR(var_df_nivel, 
-                       p=1, 
-                       type="both", 
-                       season = NULL, 
-                       exogen = NULL)
+vec_model <- vars::vec2var(H1.eigen, r=1)
 
-var_base <- vars::VAR(var_df_nivel, p=1, type="both")
-plot.ts(residuals(var_model))
-acf(residuals(var_model),36)
-summary(var_model)
-roots(var_model)
+plot.ts(residuals(vec_model))
+acf(residuals(vec_model),36)
 
 # Verificação Resíduos por Ljung-Box:
-serial.test(var_model)
+serial.test(vec_model)
 
 # Verificação da Normalidade dos Resíduos por Jarque-Bera:
 
-normality.test(var_model)
+normality.test(vec_model)
 
 # Verificação da Homocedasticidade dos Resíduos:
 
-arch.test(var_model, lags.multi = 6)
+arch.test(vec_model, lags.multi = 6)
 
 # Teste de Estabilidade Paramétrica das Eq. do VAR:
 
-plot(stability(var_model), nc=1)
+plot(vars::stability(vec_model), nc=1)
 
 # Rodar a simulação de monte carlo
-resultados_mc_95 <- boot_girf_var(var_model, n.ahead = 8, runs = 10000)
+resultados_mc_95 <- boot_girf_vec(vec_model, n.ahead = 8, runs = 10000)
 
 # 3. Exportar todos os gráficos para um PDF organizado
 save_all_girfs(resultados_mc_95, folder_name = "GIRF_output", output_type = "pdf")
 
 painel_geral_95 <- plot_girf_panel(resultados_mc_95)
 
-# Rodar a simulação de monte carlo
-resultados_mc_80 <- boot_girf_var(var_model, n.ahead = 8, runs = 10000, conf = 0.80)
+# Rodar a simulação de monte carlo para outros IC
+resultados_mc_80 <- boot_girf_vec(vec_model, n.ahead = 8, runs = 10000, conf = 0.80)
 
 painel_geral_80 <- plot_girf_panel(resultados_mc_95, conf = 0.80)
 
 print(painel_geral_80)
+
+resultados_mc_65 <- boot_girf_vec(vec_model, n.ahead = 8, runs = 10000, conf = 0.65)
+
+painel_geral_65 <- plot_girf_panel(resultados_mc_95, conf = 0.65)
+
+print(painel_geral_95)
