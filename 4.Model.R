@@ -157,11 +157,15 @@ stargazer::stargazer(t(order_selection$criteria), summary = FALSE, type = "text"
 
 lags_ci <- order_selection$selection |> min()
 
+var_base <- vars::VAR(var_df_nivel, p = 1, type = "both", season = NULL, exogen = NULL)
+
+acf(residuals(var_base),36)
+
 # Teste de Cointegração de Johansen
 
 H1.eigen <- urca::ca.jo(var_df_nivel, 
                         type="eigen", 
-                        ecdet="trend", 
+                        ecdet="none", 
                         K= ifelse(lags_ci<2, 2, lags_ci), 
                         spec="longrun", 
                         season = NULL)
@@ -169,24 +173,30 @@ summary(H1.eigen)
 
 H1.trace <- urca::ca.jo(var_df_nivel, 
                         type="trace", 
-                        ecdet="trend", 
+                        ecdet="none", 
                         K= ifelse(lags_ci<2, 2, lags_ci), 
                         spec="longrun", 
                         season = NULL)
 summary(H1.trace)
 
-matjo <-  H1.eigen@cval
-matjo <- cbind(matjo, H1.eigen@teststat)
-colnames(matjo) <- c("10pct", "5pct", "1pct", "t statistic")
+matjo.eigin <-  H1.eigen@cval
+matjo.eigin <- cbind(matjo.eigin, H1.eigen@teststat)
+colnames(matjo.eigin) <- c("10pct", "5pct", "1pct", "test")
 
-stargazer::stargazer(matjo, summary = FALSE, type = "text")
+stargazer::stargazer(matjo.eigin, summary = FALSE, type = "latex")
+
+matjo.trace <-  H1.trace@cval
+matjo.trace <- cbind(matjo.trace, H1.trace@teststat)
+colnames(matjo.trace) <- c("10pct", "5pct", "1pct", "test")
+
+stargazer::stargazer(matjo.trace, summary = FALSE, type = "latex")
 
 # VAR Model ------------------------------------------------------------
 
 # pré-seleção do modelo
 acf(var_df_nivel,24)
 
-vars::VARselect(var_df_nivel,lag.max = 4, type = "both")
+vars::VARselect(var_df_nivel,lag.max = 5, type = "both")
 
 # Modelo VAR p 1
 
@@ -219,14 +229,8 @@ save_all_girfs(resultados_mc_95, folder_name = "GIRF_output", output_type = "pdf
 painel_geral_95 <- plot_girf_panel(resultados_mc_95)
 
 # Rodar a simulação de monte carlo para outros IC
-resultados_mc_80 <- boot_girf_vec(vec_model, n.ahead = 8, runs = 10000, conf = 0.80)
+resultados_mc_68 <- boot_girf_vec(vec_model, n.ahead = 8, runs = 10000, conf = 0.68)
 
-painel_geral_80 <- plot_girf_panel(resultados_mc_95, conf = 0.80)
+painel_geral_68 <- plot_girf_panel(resultados_mc_95, conf = 0.68)
 
-print(painel_geral_80)
-
-resultados_mc_65 <- boot_girf_vec(vec_model, n.ahead = 8, runs = 10000, conf = 0.65)
-
-painel_geral_65 <- plot_girf_panel(resultados_mc_95, conf = 0.65)
-
-print(painel_geral_95)
+print(painel_geral_68)
